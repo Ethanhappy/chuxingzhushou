@@ -128,6 +128,7 @@
 ```
 
 ### 六维度评分体系（加权平均）
+<img width="1920" height="920" alt="Snipaste_2026-07-08_11-40-18" src="https://github.com/user-attachments/assets/3cbf94c8-ed71-4e29-86d3-f827bde0f0cc" />
 
 | 维度 | 权重 | 评分依据 |
 |------|:---:|------|
