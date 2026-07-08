@@ -1,6 +1,8 @@
 # 郑州周末出行助手
 
 智能规划你的郑州周末行程 —— Multi-Agent 并行调度 · 多源数据交叉验证 · AI 驱动个性化生成
+<img width="1920" height="920" alt="image" src="https://github.com/user-attachments/assets/a1ed93d0-a1f9-461c-9e23-b0180ddf58c0" />
+
 
 ## 核心亮点：Multi-Agent 并行调度架构 🤖
 
