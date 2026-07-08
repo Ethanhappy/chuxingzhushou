@@ -464,9 +464,10 @@ ${weatherDesc}
                     }
                 }
 
-                // 备用：OSM Nominatim
+                // 备用：OSM Nominatim（拼接地址+城市名提高精度）
                 if (!coords) {
-                    const osmResult = await this.apiService.geocodeNominatim(item.name);
+                    const query = item.address ? `${item.name} ${item.address}` : item.name;
+                    const osmResult = await this.apiService.geocodeNominatim(query);
                     if (osmResult) {
                         coords = osmResult.coords;
                     }
