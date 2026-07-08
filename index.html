@@ -1,0 +1,327 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>郑州周末出行助手 | Zhengzhou Weekend Planner</title>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css" />
+    <link rel="stylesheet" href="css/style.css" />
+</head>
+<body>
+    <!-- 顶部导航 -->
+    <header class="app-header">
+        <div class="header-content">
+            <div class="logo">
+                <i class="fa-solid fa-map-location-dot"></i>
+                <h1>郑州周末出行助手</h1>
+            </div>
+            <p class="subtitle">智能规划你的完美周末 · 多数据源 · AI驱动</p>
+        </div>
+    </header>
+
+    <!-- 主布局 -->
+    <div class="app-container">
+        <!-- 左侧控制面板 -->
+        <aside class="control-panel" id="controlPanel">
+            <!-- 场景选择 -->
+            <section class="panel-section">
+                <h2 class="section-title">
+                    <i class="fa-solid fa-user-group"></i> 出行场景
+                </h2>
+                <div class="scenario-grid" id="scenarioGrid">
+                    <button class="scenario-card" data-scenario="family">
+                        <div class="scenario-icon">👨‍👩‍👧‍👦</div>
+                        <span class="scenario-name">家人出游</span>
+                        <span class="scenario-desc">亲子时光·老少皆宜</span>
+                    </button>
+                    <button class="scenario-card" data-scenario="friends">
+                        <div class="scenario-icon">👫</div>
+                        <span class="scenario-name">朋友结伴</span>
+                        <span class="scenario-desc">探索发现·趣味互动</span>
+                    </button>
+                    <button class="scenario-card" data-scenario="couple">
+                        <div class="scenario-icon">💑</div>
+                        <span class="scenario-name">恋人约会</span>
+                        <span class="scenario-desc">浪漫时光·甜蜜回忆</span>
+                    </button>
+                    <button class="scenario-card" data-scenario="solo">
+                        <div class="scenario-icon">🧑‍🎒</div>
+                        <span class="scenario-name">单人漫游</span>
+                        <span class="scenario-desc">独自探索·深度体验</span>
+                    </button>
+                </div>
+            </section>
+
+            <!-- 模式选择 -->
+            <section class="panel-section">
+                <h2 class="section-title">
+                    <i class="fa-solid fa-brain"></i> 规划模式
+                </h2>
+                <div class="mode-toggle" id="modeToggle">
+                    <button class="mode-btn active" data-mode="default">
+                        <i class="fa-solid fa-database"></i>
+                        <span>默认模式</span>
+                        <small>精选路线·即刻出发</small>
+                    </button>
+                    <button class="mode-btn" data-mode="llm">
+                        <i class="fa-solid fa-robot"></i>
+                        <span>AI大模型</span>
+                        <small>智能分析·个性推荐</small>
+                    </button>
+                </div>
+            </section>
+
+            <!-- 用户自定义需求输入 -->
+            <section class="panel-section" id="userInputSection">
+                <h2 class="section-title">
+                    <i class="fa-solid fa-comment-dots"></i> 自定义需求
+                    <span class="section-badge" id="userInputBadge">可选</span>
+                </h2>
+                <div class="user-input-wrapper">
+                    <textarea
+                        id="userCustomInput"
+                        class="user-input-textarea"
+                        placeholder="告诉我你的偏好，我来为你量身定制...&#10;&#10;例如：&#10;• 我想去有历史文化感的地方，不要太累&#10;• 预算控制在500元以内，喜欢小众景点&#10;• 带3岁小孩，需要亲子友好路线&#10;• 想去登封少林寺，顺便吃地道烩面"
+                        maxlength="500"
+                        rows="4"
+                    ></textarea>
+                    <div class="user-input-footer">
+                        <div class="quick-tags" id="quickTags">
+                            <span class="quick-tag" data-text="预算有限，性价比优先">💰 性价比</span>
+                            <span class="quick-tag" data-text="喜欢历史文化古迹">🏯 历史文化</span>
+                            <span class="quick-tag" data-text="想去自然风光户外活动">🌿 自然风光</span>
+                            <span class="quick-tag" data-text="美食打卡为主">🍜 美食之旅</span>
+                            <span class="quick-tag" data-text="轻松休闲不累">😌 轻松休闲</span>
+                            <span class="quick-tag" data-text="网红打卡拍照好看">📸 网红打卡</span>
+                        </div>
+                        <span class="char-count" id="charCount">0/500</span>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Multi-Agent 执行面板 -->
+            <section class="panel-section" id="agentPanelSection" style="display:none;">
+                <h2 class="section-title">
+                    <i class="fa-solid fa-robot"></i> 🤖 Multi-Agent 执行状态
+                </h2>
+                <div class="agent-panel" id="agentPanel"></div>
+            </section>
+
+            <!-- API状态指示器 -->
+            <section class="panel-section">
+                <h2 class="section-title">
+                    <i class="fa-solid fa-cloud"></i> 数据源状态
+                </h2>
+                <div class="api-status" id="apiStatus">
+                    <div class="status-item" data-api="amap">
+                        <i class="fa-solid fa-map"></i>
+                        <span>高德地图</span>
+                        <span class="status-dot" id="statusAmap"></span>
+                    </div>
+                    <div class="status-item" data-api="qweather">
+                        <i class="fa-solid fa-cloud-sun"></i>
+                        <span>和风天气</span>
+                        <span class="status-dot" id="statusQWeather"></span>
+                    </div>
+                    <div class="status-item" data-api="nominatim">
+                        <i class="fa-solid fa-globe"></i>
+                        <span>OSM地理编码</span>
+                        <span class="status-dot" id="statusNominatim"></span>
+                    </div>
+                    <div class="status-item" data-api="llm">
+                        <i class="fa-solid fa-microchip"></i>
+                        <span>AI大模型</span>
+                        <span class="status-dot" id="statusLLM"></span>
+                    </div>
+                </div>
+            </section>
+
+            <!-- API配置按钮 -->
+            <section class="panel-section">
+                <button class="btn-config" id="btnConfig">
+                    <i class="fa-solid fa-gear"></i> API 密钥配置
+                </button>
+            </section>
+
+            <!-- 生成按钮 -->
+            <button class="btn-generate" id="btnGenerate">
+                <i class="fa-solid fa-wand-magic-sparkles"></i>
+                生成周末计划
+            </button>
+        </aside>
+
+        <!-- 右侧主内容区 -->
+        <main class="main-content">
+            <!-- 加载状态 -->
+            <div class="loading-overlay" id="loadingOverlay" style="display:none;">
+                <div class="loading-spinner">
+                    <i class="fa-solid fa-spinner fa-spin"></i>
+                    <p id="loadingText">正在为你规划周末...</p>
+                </div>
+            </div>
+
+            <!-- 天气信息栏 -->
+            <div class="weather-bar" id="weatherBar" style="display:none;">
+                <div class="weather-main" id="weatherMain"></div>
+                <div class="weather-source" id="weatherSource"></div>
+            </div>
+
+            <!-- 地图容器 -->
+            <div class="map-container" id="mapContainer">
+                <div id="map"></div>
+                <div class="map-legend" id="mapLegend" style="display:none;"></div>
+            </div>
+
+            <!-- 行程计划展示 -->
+            <div class="plan-container" id="planContainer" style="display:none;">
+                <div class="plan-header">
+                    <h2 id="planTitle">你的周末行程</h2>
+                    <div class="plan-meta" id="planMeta"></div>
+                </div>
+                <div class="timeline" id="timeline"></div>
+            </div>
+
+            <!-- 评价反馈区域 -->
+            <div class="evaluation-container" id="evaluationContainer" style="display:none;">
+                <div class="eval-header">
+                    <h2><i class="fa-solid fa-star"></i> 智能评价反馈</h2>
+                    <span class="eval-mode-badge" id="evalModeBadge"></span>
+                </div>
+
+                <!-- 总分+星级 -->
+                <div class="eval-overall" id="evalOverall">
+                    <div class="eval-score-circle" id="evalScoreCircle"></div>
+                    <div class="eval-stars" id="evalStars"></div>
+                    <p class="eval-feedback-text" id="evalFeedback"></p>
+                </div>
+
+                <!-- 六维度评分 -->
+                <div class="eval-dimensions" id="evalDimensions"></div>
+
+                <!-- 亮点 & 建议 -->
+                <div class="eval-detail-grid">
+                    <div class="eval-card highlights-card">
+                        <h3><i class="fa-solid fa-thumbs-up"></i> ✨ 亮点</h3>
+                        <ul id="evalHighlights"></ul>
+                    </div>
+                    <div class="eval-card suggestions-card">
+                        <h3><i class="fa-solid fa-lightbulb"></i> 💡 改进建议</h3>
+                        <ul id="evalSuggestions"></ul>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 空状态 -->
+            <div class="empty-state" id="emptyState">
+                <i class="fa-solid fa-compass"></i>
+                <h2>开始规划你的郑州周末之旅</h2>
+                <p>选择出行场景和规划模式，点击"生成周末计划"</p>
+                <div class="empty-features">
+                    <div class="feature-item">
+                        <i class="fa-solid fa-check-circle"></i>
+                        <span>4种出行场景</span>
+                    </div>
+                    <div class="feature-item">
+                        <i class="fa-solid fa-check-circle"></i>
+                        <span>双模式智能规划</span>
+                    </div>
+                    <div class="feature-item">
+                        <i class="fa-solid fa-check-circle"></i>
+                        <span>多API数据源验证</span>
+                    </div>
+                    <div class="feature-item">
+                        <i class="fa-solid fa-check-circle"></i>
+                        <span>交互式地图展示</span>
+                    </div>
+                    <div class="feature-item">
+                        <i class="fa-solid fa-check-circle"></i>
+                        <span>自定义需求输入</span>
+                    </div>
+                    <div class="feature-item">
+                        <i class="fa-solid fa-check-circle"></i>
+                        <span>Multi-Agent 评价</span>
+                    </div>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <!-- API配置弹窗 -->
+    <div class="modal-overlay" id="configModal" style="display:none;">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2><i class="fa-solid fa-key"></i> API 密钥配置</h2>
+                <button class="modal-close" id="btnCloseModal">&times;</button>
+            </div>
+            <div class="modal-body">
+                <p class="modal-hint">配置API密钥以获取实时数据。不配置也可使用默认模式。</p>
+
+                <div class="config-group">
+                    <label>
+                        <i class="fa-solid fa-map"></i> 高德地图 Web API Key
+                        <a href="https://lbs.amap.com/api/webservice/create-project-and-key" target="_blank" class="config-link">获取Key →</a>
+                    </label>
+                    <input type="text" id="configAmapKey" placeholder="输入你的高德地图 Key" />
+                </div>
+
+                <div class="config-group">
+                    <label>
+                        <i class="fa-solid fa-cloud-sun"></i> 和风天气 API Key
+                        <a href="https://dev.qweather.com/" target="_blank" class="config-link">获取Key →</a>
+                    </label>
+                    <input type="text" id="configQWeatherKey" placeholder="输入你的和风天气 Key（可选）" />
+                </div>
+
+                <div class="config-group">
+                    <label>
+                        <i class="fa-solid fa-robot"></i> AI 大模型配置（OpenAI 兼容接口）
+                        <span class="config-link">支持多家模型 →</span>
+                    </label>
+                    <input type="text" id="configLlmUrl" placeholder="API 端点（如 https://api.deepseek.com/v1）" />
+                    <input type="text" id="configLlmKey" placeholder="API Key" />
+                    <input type="text" id="configLlmModel" placeholder="模型名称（如 deepseek-chat）" />
+                    <div class="model-presets" id="modelPresets">
+                        <small style="color:var(--text-muted); font-size:0.7rem; display:block; margin:6px 0 4px;">快捷填入：</small>
+                        <button type="button" class="preset-btn" data-provider="deepseek">DeepSeek</button>
+                        <button type="button" class="preset-btn" data-provider="qwen">通义千问</button>
+                        <button type="button" class="preset-btn" data-provider="openai">OpenAI</button>
+                        <button type="button" class="preset-btn" data-provider="zhipu">智谱GLM</button>
+                        <button type="button" class="preset-btn" data-provider="moonshot">Kimi</button>
+                    </div>
+                    <small style="color:var(--text-muted); font-size:0.72rem; display:block; margin-top:6px;">
+                        💡 只要支持 OpenAI <code>/chat/completions</code> 格式的模型都能用<br>
+                        📎 模型名称必须与所选平台的 API 文档一致，不要猜
+                    </small>
+                </div>
+
+                <button class="btn-save-config" id="btnSaveConfig">
+                    <i class="fa-solid fa-floppy-disk"></i> 保存配置
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Toast提示 -->
+    <div class="toast-container" id="toastContainer"></div>
+
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <script src="js/config.js"></script>
+    <!-- 服务层 -->
+    <script src="js/services/apiService.js"></script>
+    <script src="js/services/mapService.js"></script>
+    <script src="js/services/llmService.js"></script>
+    <script src="js/services/evaluatorService.js"></script>
+    <!-- 数据层 -->
+    <script src="js/data/zhengzhouData.js"></script>
+    <!-- Multi-Agent 架构 -->
+    <script src="js/agents/baseAgent.js"></script>
+    <script src="js/agents/weatherAgent.js"></script>
+    <script src="js/agents/poiAgent.js"></script>
+    <script src="js/agents/trafficAgent.js"></script>
+    <script src="js/agents/reviewAgent.js"></script>
+    <script src="js/agents/coordinatorAgent.js"></script>
+    <!-- 主应用 -->
+    <script src="js/app.js"></script>
+</body>
+</html>
