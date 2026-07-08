@@ -95,7 +95,7 @@ ${agentSummary}
             keys.llmUrl,
             keys.llmKey,
             {
-                model: keys.llmModel || 'deepseek-v4-pro',
+                model: keys.llmModel || '',
                 messages: [
                     { role: 'system', content: '你是一个旅行规划评价专家。你必须只输出JSON格式数据，不要输出任何解释或markdown。' },
                     { role: 'user', content: prompt },
