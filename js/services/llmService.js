@@ -157,6 +157,22 @@ class LLMService {
         // ★ 解析用户需求：天数、预算等
         const parsed = this._parseUserNeeds(userInput);
 
+        // ★ 候选地点池：把本地库真实地点作为 LLM 的选点范围（RAG思路，让任意人群都能映射到真实地点，坐标100%准确）
+        let placePoolText = '';
+        try {
+            const places = (typeof ZhengzhouData !== 'undefined' && ZhengzhouData) ? ZhengzhouData.places : {};
+            const lines = [];
+            Object.keys(places).forEach(function (k) {
+                const p = places[k];
+                const tags = (p.tags || []).join('/');
+                const desc = (p.description || '').slice(0, 22);
+                lines.push('- ' + p.name + '｜' + p.category + '｜标签:' + tags + '｜' + p.price + '｜' + desc);
+            });
+            if (lines.length) {
+                placePoolText = '\n\n【可用地点库（必须且只能从这些地点中选择，严禁编造库外地点）】\n' + lines.join('\n');
+            }
+        } catch (e) { /* 本地库缺失时退化为自由生成 */ }
+
         // ★ 天气：智能合并多数据源，按天呈现
         const weatherDesc = this._buildWeatherSection(weatherInfo, parsed.dayCount);
 
@@ -188,12 +204,15 @@ ${weatherDesc}
 【要求】
 1. 行程天数按上面的天数要求执行，每天安排2-4个地点
 2. ★ 务必根据每日天气预报合理分配活动：雨天优先室内景点(博物馆/商场/美食)，晴天优先户外景点(公园/山水/街区)
-3. 地点必须是郑州真实存在的地点（包括市区、登封、巩义、新郑等）
+3. ★ 地点必须真实且坐标可定位；必须从下方【可用地点库】中选取，严禁虚构库外地点
 4. 每个地点需包含：名称、具体地址、推荐时间段、简短推荐理由（1-2句话）
 5. 考虑不同场景的特点（如亲子需要轻松安全、情侣需要浪漫、朋友需要趣味互动）
 6. 穿插推荐地道的郑州美食（烩面、胡辣汤等）
 7. 考虑交通便利性和地点之间的路线合理性
-8. 如果用户有自定义需求（如天数、预算、兴趣偏好），务必优先满足用户的偏好和约束条件
+8. 如果用户有自定义需求（如天数、预算、兴趣偏好、身份职业），务必优先满足
+9. ★ 所有地点只能从下方【可用地点库】中选择，禁止编造库外地点；面对任意身份职业（如追星→演出潮流、工人/外卖→实在性价比、医生/教师→轻松疗愈、白领→解压美食、老板/商务→市中心购物晚餐、学生→美食闲逛、汉服/Coser→二次元文艺、运动/户外→自然风光、老人→公园休闲、亲子→动物园、情侣→文艺打卡、历史迷→文博古迹），请用库内最贴合的地点组合出符合其气质与预算的行程
+
+${placePoolText}
 
 【输出格式】请严格按照以下JSON格式输出，不要输出其他内容。days数组的长度必须与天数要求一致：
 
@@ -446,49 +465,57 @@ ${weatherDesc}
 
     /**
      * 为LLM生成的计划补充地理坐标
+     * ★ 关键改进：优先从本地库按名称匹配，命中直接用真实坐标，
+     *   彻底避免"库外地点坐标飞走/随机抖动"问题（如龙子湖事件）
      */
     async enrichPlanWithCoords(plan) {
         const enrichedDays = [];
         for (const day of plan.days) {
             const enrichedItems = [];
             for (const item of day.items) {
-                let coords = null;
+                // ★ 优先本地库匹配：LLM 从【可用地点库】选的点，坐标 100% 准确
+                const localPlace = this._matchLocalPlace(item.name);
+                let finalCoords = null;
                 let enrichedAddress = item.address;
+                let placeObj = null;
 
-                // 尝试高德地理编码
-                if (APP_CONFIG.apiKeys.amap) {
-                    const geoResult = await this.apiService.geocodeAmap(item.name + ' ' + (item.address || ''));
-                    if (geoResult) {
-                        coords = geoResult.coords;
-                        enrichedAddress = enrichedAddress || geoResult.name;
+                if (localPlace) {
+                    finalCoords = localPlace.coords;
+                    enrichedAddress = localPlace.address;
+                    placeObj = localPlace;
+                } else {
+                    // 库内未命中：走地理编码兜底
+                    let coords = null;
+                    if (APP_CONFIG.apiKeys.amap) {
+                        const geoResult = await this.apiService.geocodeAmap(item.name + ' ' + (item.address || ''));
+                        if (geoResult) {
+                            coords = geoResult.coords;
+                            enrichedAddress = enrichedAddress || geoResult.name;
+                        }
                     }
-                }
-
-                // 备用：OSM Nominatim（拼接地址+城市名提高精度）
-                if (!coords) {
-                    const query = item.address ? `${item.name} ${item.address}` : item.name;
-                    const osmResult = await this.apiService.geocodeNominatim(query);
-                    if (osmResult) {
-                        coords = osmResult.coords;
+                    if (!coords) {
+                        const query = item.address ? `${item.name} ${item.address}` : item.name;
+                        const osmResult = await this.apiService.geocodeNominatim(query);
+                        if (osmResult) coords = osmResult.coords;
                     }
-                }
-
-                // ★ 如果地理编码失败，给 fallback 坐标加随机偏移避免 marker 重叠
-                let finalCoords = coords;
-                if (!finalCoords) {
-                    const base = APP_CONFIG.zhengzhouCenter;
-                    const jitter = 0.005; // 约500米随机偏移
-                    finalCoords = [
-                        base[0] + (Math.random() - 0.5) * jitter * 2,
-                        base[1] + (Math.random() - 0.5) * jitter * 2,
-                    ];
+                    if (coords) {
+                        finalCoords = coords;
+                    } else {
+                        // 兜底：随机偏移（仅限地理编码也失败的极少数情况）
+                        const base = APP_CONFIG.zhengzhouCenter;
+                        const jitter = 0.005;
+                        finalCoords = [
+                            base[0] + (Math.random() - 0.5) * jitter * 2,
+                            base[1] + (Math.random() - 0.5) * jitter * 2,
+                        ];
+                    }
                 }
 
                 enrichedItems.push({
                     ...item,
                     coords: finalCoords,
                     address: enrichedAddress || item.address || '郑州',
-                    place: {
+                    place: placeObj || {
                         name: item.name,
                         address: enrichedAddress || item.address || '郑州',
                         coords: finalCoords,
@@ -500,6 +527,22 @@ ${weatherDesc}
             enrichedDays.push({ ...day, items: enrichedItems });
         }
         return { ...plan, days: enrichedDays };
+    }
+
+    /**
+     * 按名称在本地库中匹配地点（精确 → 包含，兼容 LLM 返回带后缀的名称）
+     */
+    _matchLocalPlace(name) {
+        if (!name) return null;
+        const places = (typeof ZhengzhouData !== 'undefined' && ZhengzhouData)
+            ? Object.values(ZhengzhouData.places) : [];
+        const n = String(name).trim().toLowerCase();
+        let hit = places.find(p => (p.name || '').toLowerCase() === n);
+        if (!hit) hit = places.find(p => {
+            const pn = (p.name || '').toLowerCase();
+            return pn && (n.includes(pn) || pn.includes(n));
+        });
+        return hit || null;
     }
 }
 

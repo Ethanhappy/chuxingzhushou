@@ -409,13 +409,6 @@ class ZhengzhouPlanner {
             constraints.student = true;
             constraints.tightBudget = true;  // 学生默认预算紧张
         }
-        if (/老人|爸妈|父母|长辈/.test(input)) {
-            constraints.interests.push('老年友好');
-        }
-        if (/小孩|孩子|亲子/.test(input)) {
-            constraints.interests.push('亲子');
-        }
-
         // ---- 人数检测 ----
         const groupMatch = input.match(/(\d+|[一两三四五六七八九十])个?人/);
         if (groupMatch) {
@@ -423,24 +416,68 @@ class ZhengzhouPlanner {
             constraints.groupSize = numMap[groupMatch[1]] || parseInt(groupMatch[1]) || null;
         }
 
-        // ---- 兴趣检测 ----
-        if (input.includes('历史') || input.includes('文化') || input.includes('古迹') || input.includes('少林')) {
-            constraints.interests.push('历史文化');
+        // ---- 兴趣检测（关键词映射表，便于持续扩展同义词）----
+        const interestKeywords = {
+            '亲子':     ['小孩', '孩子', '亲子', '宝宝', '娃', '儿童', '带娃', '幼儿'],
+            '老年友好': ['老人', '爸妈', '父母', '长辈', '老年', '爷爷', '奶奶', '带老人'],
+            '历史文化': ['历史', '文化', '古迹', '少林', '博物', '古都', '文物', '遗址', '国学', '寺庙', '古建', '底蕴'],
+            '美食':     ['美食', '吃', '小吃', '地道', '烩面', '胡辣汤', '大餐', '餐厅', '夜市', '烧烤', '火锅', '探店', '吃货', '嘴馋'],
+            '自然风光': ['自然', '风景', '户外', '山水', '爬山', '公园', '湖', '踏青', '徒步', '露营', '赏花', '绿地', '氧吧'],
+            '轻松休闲': ['轻松', '休闲', '不累', '放松', '慢节奏', '躺平', '发呆', '佛系', '悠闲', '随便逛'],
+            '网红打卡': ['网红', '打卡', '拍照', '出片', '拍摄', 'ins', '机位', '照片', '拍大片'],
+            '探险刺激': ['刺激', '酷', '挑战', '冒险', '过山车', '密室', '游乐', '蹦极', '心跳'],
+            '二次元':   ['二次元', '死宅', '宅', '动漫', '漫展', 'cos', 'coser', '手办', '谷子', '漫画', 'acg', '番剧', '御宅', '痛包', '谷店', '同人', '追番'],
+            '购物':     ['购物', '逛街', '商场', '买买买', '血拼', 'shopping', '商圈', '奥莱'],
+            '夜生活':   ['夜生活', '酒吧', '清吧', '蹦迪', 'livehouse', '夜店', '夜景', '越夜', '小酌'],
+            '文艺':     ['文艺', '小众', '艺术', '文创', '展览', '画展', '书店', '咖啡', '下午茶', '安静', '独处', '一个人静静', '氛围感'],
+            '运动':     ['运动', '健身', '骑行', '跑步', '打球', '游泳', '滑板', '滑雪', '徒步'],
+            '演出':     ['演出', '音乐会', '演唱会', '话剧', '剧场', '音乐节', '看剧'],
+        };
+        for (const [interest, keywords] of Object.entries(interestKeywords)) {
+            if (keywords.some(kw => input.includes(kw)) && !constraints.interests.includes(interest)) {
+                constraints.interests.push(interest);
+            }
         }
-        if (input.includes('美食') || input.includes('吃') || input.includes('小吃') || input.includes('地道') || input.includes('烩面')) {
-            constraints.interests.push('美食');
-        }
-        if (input.includes('自然') || input.includes('风景') || input.includes('户外') || input.includes('山水') || input.includes('山')) {
-            constraints.interests.push('自然风光');
-        }
-        if (input.includes('轻松') || input.includes('休闲') || input.includes('不累') || input.includes('放松')) {
-            constraints.interests.push('轻松休闲');
-        }
-        if (input.includes('网红') || input.includes('打卡') || input.includes('拍照')) {
-            constraints.interests.push('网红打卡');
-        }
-        if (input.includes('男生') || input.includes('刺激') || input.includes('酷') || input.includes('挑战')) {
-            constraints.interests.push('探险刺激');
+
+        // ---- 身份/职业兜底（覆盖各行各业长尾人群，无需逐个穷举地点）----
+        // 识别到身份词 → 映射到人群特征（预算/兴趣），复用现有匹配逻辑选出合适地点
+        const identityMap = [
+            // —— 体力 / 蓝领 / 服务行业 ——
+            { test: ['工人', '打工', '打工人', '蓝领', '车间', '厂里', '流水线', '农民工', '务农', '农民', '种地', '实在', '接地气', '过日子', '省钱过日子', '过好日子'], set: { tightBudget: true, interests: ['轻松休闲', '美食'] } },
+            { test: ['外卖', '快递', '网约车', '服务员', '保姆', '保洁', '保安', '收银', '后厨', '打工妹', '打工仔'], set: { tightBudget: true, interests: ['美食', '轻松休闲'] } },
+            // —— 追星 / 二次元 / 文艺 / 摄影 ——
+            { test: ['追星', '粉丝', '爱豆', 'idol', '演唱会', '追番', '看剧', '追星女孩', '追星族'], set: { interests: ['演出', '二次元'] } },
+            { test: ['二次元', '动漫', '漫展', 'cos', 'coser', '谷子', 'jk', '汉服', '古风', '国风', '同人'], set: { interests: ['二次元', '文艺'] } },
+            { test: ['文艺青年', '读书', '写作', '画家', '音乐人', '诗人', '摄影', '拍照', '出片', '旅拍', '小红书', '博主'], set: { interests: ['文艺', '网红打卡'] } },
+            // —— 白领 / 专业 / 技术 ——
+            { test: ['医生', '护士', '医护', '老师', '教师', '公务员', '事业单位', '体制内'], set: { interests: ['轻松休闲', '历史文化'] } },
+            { test: ['程序员', 'it', '码农', '工程师', '技术宅', '科研', '研究生', '博士', '搞研发'], set: { interests: ['二次元', '轻松休闲'] } },
+            { test: ['白领', '上班族', '社畜', '加班', '想放松', '疗愈', '解压', '压力大', '累'], set: { interests: ['轻松休闲', '美食'] } },
+            { test: ['老板', '老板娘', '商务', '出差', '经理', '高管', '创业', '谈生意', '应酬'], set: { interests: ['购物', '美食'] } },
+            // —— 吃货 ——
+            { test: ['吃货', '吃遍', '美食家', '探店', '嘴馋', '会吃', '吃好'], set: { interests: ['美食'] } },
+            // —— 学生 ——
+            { test: ['学生', '大学生', '考研', '考研党', '高中生', '上学', '校园', '社团'], set: { student: true, interests: ['美食', '轻松休闲'] } },
+            // —— 运动 / 户外 ——
+            { test: ['运动', '健身', '跑步', '骑行', '篮球', '游泳', '瑜伽', '普拉提', '马拉松'], set: { interests: ['运动', '自然风光'] } },
+            { test: ['驴友', '户外', '徒步', '登山', '露营', '自驾', '爬山', '骑行党'], set: { interests: ['自然风光', '运动'] } },
+            // —— 亲子 / 老年 ——
+            { test: ['亲子', '带娃', '宝妈', '奶爸', '儿童', '遛娃', '宝贝', '全家'], set: { interests: ['亲子'] } },
+            { test: ['老年', '退休', '大爷', '大妈', '爷爷奶奶', '银发', '养老', '上年纪'], set: { interests: ['老年友好'] } },
+            // —— 情侣 / 夜生活 ——
+            { test: ['情侣', '约会', '对象', '男朋友', '女朋友', '脱单', '求婚', '纪念日'], set: { interests: ['文艺', '网红打卡'] } },
+            { test: ['夜猫子', '年轻人', '潮人', '蹦迪', '酒吧', '夜生活', '通宵', '浪'], set: { interests: ['夜生活', '购物'] } },
+            // —— 历史文化 ——
+            { test: ['历史', '文博', '考古', '文物', '历史爱好者', '博物馆迷', '古建'], set: { interests: ['历史文化'] } },
+        ];
+        for (const { test, set } of identityMap) {
+            if (test.some(kw => input.includes(kw))) {
+                if (set.tightBudget) constraints.tightBudget = true;
+                if (set.student) constraints.student = true;
+                (set.interests || []).forEach(i => {
+                    if (!constraints.interests.includes(i)) constraints.interests.push(i);
+                });
+            }
         }
 
         return constraints;
@@ -464,6 +501,83 @@ class ZhengzhouPlanner {
     }
 
     /**
+     * 根据识别到的兴趣，从全部地点库中筛选真正匹配的真实去处
+     * 优先用兴趣全名精确匹配地点 tag；匹配不到再用核心词兜底
+     */
+    _getInterestPlaces(constraints) {
+        const INTEREST_MATCH = {
+            '二次元':   ['二次元', '谷店', '潮玩', '动漫'],
+            '历史文化': ['历史', '文化', '古迹', '博物馆', '遗址', '古建'],
+            '美食':     ['美食', '小吃', '早餐', '老字号', '夜市'],
+            '自然风光': ['自然', '山水', '公园', '户外', '湖', '登山'],
+            '轻松休闲': ['休闲', '轻松', '放松', '公园'],
+            '网红打卡': ['打卡', '网红', '拍照', '出片'],
+            '探险刺激': ['刺激', '探险', '高空', '过山车', '游乐'],
+            '购物':     ['购物', '商场', '商圈', '潮玩'],
+            '夜生活':   ['夜生活', '夜市', '酒吧', '夜景'],
+            '文艺':     ['文艺', '文创', '展览', '艺术', '书店', '咖啡'],
+            '运动':     ['运动', '健身', '骑行', '徒步', '跑步', '体育', '登山'],
+            '演出':     ['演出', '音乐会', '剧场', '话剧', '音乐节'],
+            '商务':     ['商务', '市中心', 'CBD', '商圈', '晚餐', '购物'],
+            '亲子':     ['亲子', '儿童', '动物园', '海洋'],
+            '老年友好': ['休闲', '公园', '文化'],
+        };
+
+        const result = [];
+        const seen = new Set();
+        for (const interest of constraints.interests) {
+            const kw = interest.toLowerCase();
+            // 1) 兴趣全名精确匹配地点 tag
+            let cands = Object.values(ZhengzhouData.places).filter(p =>
+                (p.tags || []).join(',').toLowerCase().includes(kw)
+            );
+            // 2) 全名匹配不到，用核心词兜底
+            if (!cands.length) {
+                const cores = (INTEREST_MATCH[interest] || []).map(c => c.toLowerCase());
+                cands = Object.values(ZhengzhouData.places).filter(p => {
+                    const tagStr = (p.tags || []).join(',').toLowerCase();
+                    return cores.some(c => tagStr.includes(c));
+                });
+            }
+            cands.forEach(p => {
+                if (!seen.has(p.id)) { result.push(p); seen.add(p.id); }
+            });
+        }
+        return result.slice(0, 2);
+    }
+
+    /**
+     * 将兴趣对应的真实地点注入行程（默认两日游场景生效）
+     * 一日游已在合并分支处理，这里对单日行程跳过以避免重复
+     */
+    _injectInterestPlaces(plan, constraints) {
+        if (!constraints.interests || !constraints.interests.length) return;
+        if (!plan.days || plan.days.length < 2) return;
+
+        const injectPlaces = this._getInterestPlaces(constraints);
+        if (!injectPlaces.length) return;
+
+        // 排除行程中已存在的地点
+        const usedIds = new Set();
+        plan.days.forEach(d => d.items?.forEach(i => { if (i.placeId) usedIds.add(i.placeId); }));
+
+        const lastDay = plan.days[plan.days.length - 1];
+        const extra = injectPlaces
+            .filter(p => !usedIds.has(p.id))
+            .map((p, i) => ({
+                placeId: p.id,
+                place: p,
+                time: '灵活安排',
+                tip: `🎯 根据你的「${constraints.interests.join('/')}」兴趣推荐：${p.name}`,
+                order: (lastDay.items?.length || 0) + i + 1,
+            }));
+        if (!extra.length) return;
+
+        // 追加到最后一天（不删除原有精华景点）
+        lastDay.items = [...(lastDay.items || []), ...extra];
+    }
+
+    /**
      * 将用户偏好关键字应用到默认计划（真实解析约束条件）
      */
     _applyUserPrefsToPlan(plan, userInput) {
@@ -472,43 +586,43 @@ class ZhengzhouPlanner {
 
         // ===== 1. 处理天数约束 =====
         if (constraints.dayCount === 1 && plan.days && plan.days.length >= 2) {
-            // 合并两天为一日游：第一天为主，从第二天挑选最匹配的1-2个地点
+            // 合并两天为一日游：第一天为主，叠加兴趣偏好与预算友好的补充地点
             const day1Items = [...(plan.days[0].items || [])];
             const day2Items = plan.days[1]?.items || [];
 
-            // 从第二天选取与兴趣/预算匹配的地点
-            let pickedFromDay2 = [];
+            let extra = [];
+
+            // 预算紧张：从第二天优先选免费的
             if (constraints.tightBudget) {
-                // 预算紧张：优先选免费的
-                pickedFromDay2 = day2Items.filter(item =>
-                    this._isBudgetFriendly(item.place)
-                ).slice(0, 2);
-            }
-            // 按兴趣匹配补充
-            if (constraints.interests.length > 0 && pickedFromDay2.length < 2) {
-                const interestItems = day2Items.filter(item => {
-                    const tags = item.place?.tags || [];
-                    return constraints.interests.some(interest => {
-                        const tagStr = tags.join(',').toLowerCase();
-                        return tagStr.includes(interest.toLowerCase().substring(0, 2));
-                    });
-                });
-                const existingIds = new Set(pickedFromDay2.map(i => i.placeId));
-                interestItems.forEach(item => {
-                    if (!existingIds.has(item.placeId) && pickedFromDay2.length < 2) {
-                        pickedFromDay2.push(item);
-                        existingIds.add(item.placeId);
-                    }
-                });
-            }
-            // 如果还是没有，取前2个预算友好的
-            if (pickedFromDay2.length === 0) {
-                pickedFromDay2 = day2Items
+                extra = day2Items
                     .filter(item => this._isBudgetFriendly(item.place))
                     .slice(0, 2);
             }
 
-            const mergedItems = [...day1Items, ...pickedFromDay2].slice(0, 5);
+            // 兴趣偏好：从全部地点库筛选真正匹配兴趣的真实去处
+            if (constraints.interests.length > 0) {
+                const interestPlaces = this._getInterestPlaces(constraints);
+                const extraIds = new Set(extra.map(i => i.placeId));
+                interestPlaces.forEach(p => {
+                    if (!extraIds.has(p.id) && extra.length < 2) {
+                        extra.push({
+                            placeId: p.id, place: p, time: '灵活安排',
+                            tip: `🎯 根据你的兴趣推荐：${p.name}`, order: 100,
+                        });
+                        extraIds.add(p.id);
+                    }
+                });
+            }
+
+            // 仍不足则用第二天预算友好地点补齐
+            if (extra.length < 2) {
+                day2Items
+                    .filter(item => this._isBudgetFriendly(item.place) &&
+                        !extra.some(e => e.placeId === item.placeId))
+                    .forEach(item => { if (extra.length < 2) extra.push(item); });
+            }
+
+            const mergedItems = [...day1Items, ...extra].slice(0, 6);
             plan.days = [{
                 day: 1,
                 label: '一日游 · 精华路线',
@@ -569,15 +683,39 @@ class ZhengzhouPlanner {
             });
         }
 
-        // ===== 4. 兴趣偏好看板 =====
+        // ===== 3.5 兴趣 → 真实地点注入（默认两日游也生效）=====
+        this._injectInterestPlaces(plan, constraints);
+
+        // ===== 4. 兴趣偏好识别与反馈 =====
         if (constraints.interests.includes('轻松休闲')) {
             plan.title = '😌 ' + plan.title;
         }
-        if (constraints.interests.includes('历史文化')) {
-            plan.description = '文化深度·' + (plan.description?.replace(/^[^\w\u4e00-\u9fff]*/, '') || '');
-        }
-        if (constraints.interests.includes('美食')) {
-            plan.description = '美食打卡·' + (plan.description?.replace(/^[^\w\u4e00-\u9fff]*/, '') || '');
+        // 兴趣 → 郑州本地补充建议（本地库暂无对应地点时以贴士形式呈现，确保偏好被"看见"）
+        const interestTips = {
+            '历史文化': { prefix: '文化深度', tip: '🏯 历史文化控推荐：河南博物院、郑州商城遗址、二七纪念塔' },
+            '美食':     { prefix: '美食打卡', tip: '🍜 吃货必打卡：方中山胡辣汤、萧记三鲜烩面、健康路夜市' },
+            '二次元':   { prefix: '二次元同好', tip: '🎮 二次元聚集地：正弘城 / 大卫城 / 熙地港（谷店·痛包·漫展），二砂文创园常有同人活动' },
+            '购物':     { prefix: '逛街血拼', tip: '🛍️ 购物推荐：二七德化步行街、正弘城、大卫城、丹尼斯' },
+            '夜生活':   { prefix: '越夜越精彩', tip: '🌃 夜生活推荐：如意湖畔夜景、中原福塔观夜景、酒吧街小酌' },
+            '文艺':     { prefix: '文艺小众', tip: '🎨 文艺打卡：二砂文创园、油化厂创意园、独立书店与咖啡馆' },
+            '运动':     { prefix: '活力运动', tip: '🏃 运动推荐：龙子湖 / 如意湖环湖骑行、郑州奥体中心' },
+            '演出':     { prefix: '现场Live', tip: '🎵 演出推荐：河南艺术中心、各大 Livehouse 留意演出排期' },
+            '网红打卡': { prefix: '出片圣地', tip: '📸 出片机位：如意湖CBD大玉米、二砂文创园、龙子湖' },
+            '探险刺激': { prefix: '心跳加速', tip: '🎢 刺激推荐：方特欢乐世界、中原福塔玻璃栈道' },
+        };
+        const appliedTips = [];
+        constraints.interests.forEach(interest => {
+            const info = interestTips[interest];
+            if (info) {
+                plan.description = info.prefix + '·' + (plan.description?.replace(/^[^\w\u4e00-\u9fff]*/, '') || '');
+                appliedTips.push(info.tip);
+            }
+        });
+        // 将识别到的兴趣建议汇总到第一天首个地点的贴士，让"识别结果"直观可见
+        if (appliedTips.length > 0 && plan.days?.[0]?.items?.[0]) {
+            const firstItem = plan.days[0].items[0];
+            const extra = appliedTips.join('\n');
+            firstItem.tip = firstItem.tip ? extra + '\n' + firstItem.tip : extra;
         }
 
         // ===== 5. 人数提示 =====
